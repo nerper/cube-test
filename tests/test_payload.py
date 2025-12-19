@@ -106,11 +106,31 @@ async def test_create_payload_deduplication(db_session):
 
 
 @pytest.mark.asyncio
+async def test_payload_id_is_deterministic_hash(db_session):
+    """Test that payload ID is the deterministic SHA-256 hash of inputs."""
+    from app.services.payload import _compute_input_hash
+
+    list1 = ["deterministic", "test"]
+    list2 = ["hash", "verification"]
+
+    # Compute expected hash
+    expected_hash = _compute_input_hash(list1, list2)
+
+    # Create payload
+    payload_id, _ = await create_payload(db_session, list1, list2)
+    await db_session.commit()
+
+    # ID should match the computed hash
+    assert payload_id == expected_hash
+    assert len(payload_id) == 64  # SHA-256 hex is 64 chars
+
+
+@pytest.mark.asyncio
 async def test_get_payload_not_found(db_session):
     """Test that getting non-existent payload returns None."""
-    import uuid
-
-    result = await get_payload(db_session, uuid.uuid4())
+    # Use a valid SHA-256 format string (64 hex chars) that doesn't exist
+    fake_id = "b" * 64
+    result = await get_payload(db_session, fake_id)
     assert result is None
 
 

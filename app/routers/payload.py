@@ -1,8 +1,6 @@
 """API routes for payload operations."""
 
-from uuid import UUID
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -15,13 +13,13 @@ router = APIRouter(prefix="/payload", tags=["payload"])
 @router.post(
     "",
     response_model=PayloadCreateResponse,
-    status_code=status.HTTP_201_CREATED,
     summary="Create a new payload",
     description="Generate a payload by transforming and interleaving two string lists. "
     "Returns the same ID if identical inputs were previously submitted.",
 )
 async def create_payload(
     request: PayloadCreateRequest,
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> PayloadCreateResponse:
     """
@@ -34,7 +32,8 @@ async def create_payload(
     payload_id, cached = await payload_service.create_payload(
         db, request.list1, request.list2
     )
-    return PayloadCreateResponse(id=str(payload_id), cached=cached)
+    response.status_code = status.HTTP_200_OK if cached else status.HTTP_201_CREATED
+    return PayloadCreateResponse(id=payload_id, cached=cached)
 
 
 @router.get(
@@ -44,10 +43,10 @@ async def create_payload(
     description="Get the generated output for a previously created payload.",
 )
 async def get_payload(
-    payload_id: UUID,
+    payload_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> PayloadGetResponse:
-    """Retrieve a payload by its ID."""
+    """Retrieve a payload by its deterministic SHA-256 hash ID."""
     payload = await payload_service.get_payload(db, payload_id)
 
     if payload is None:

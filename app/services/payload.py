@@ -2,12 +2,12 @@
 Payload service for generating and retrieving interleaved payloads.
 
 Handles payload generation with deduplication - identical inputs return
-the same payload ID instead of creating duplicates.
+the same payload ID instead of creating duplicates. Uses deterministic
+SHA-256 hashes of inputs as payload IDs for true idempotency.
 """
 
 import hashlib
 import json
-import uuid
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -42,7 +42,7 @@ def _interleave_lists(list1: list[str], list2: list[str]) -> str:
 
 async def create_payload(
     db: AsyncSession, list1: list[str], list2: list[str]
-) -> tuple[uuid.UUID, bool]:
+) -> tuple[str, bool]:
     """
     Create a new payload or return existing one if inputs match.
     
@@ -52,12 +52,15 @@ async def create_payload(
         list2: Second list of strings
         
     Returns:
-        Tuple of (payload_id, was_cached) where was_cached indicates
-        if an existing payload was returned instead of creating new one
+        Tuple of (payload_id, was_cached) where payload_id is the deterministic
+        SHA-256 hash of the inputs, and was_cached indicates if an existing
+        payload was returned instead of creating new one
     """
-    # Check for existing payload with same inputs
+    # Compute deterministic hash for the inputs
     input_hash = _compute_input_hash(list1, list2)
-    stmt = select(Payload).where(Payload.input_hash == input_hash)
+    
+    # Check for existing payload with same inputs (using id which equals input_hash)
+    stmt = select(Payload).where(Payload.id == input_hash)
     result = await db.execute(stmt)
     existing = result.scalar_one_or_none()
 
@@ -76,8 +79,9 @@ async def create_payload(
     # Generate interleaved output
     output = _interleave_lists(transformed_list1, transformed_list2)
 
-    # Store the new payload
+    # Store the new payload with deterministic ID
     payload = Payload(
+        id=input_hash,
         input_hash=input_hash,
         list1_json=json.dumps(list1),
         list2_json=json.dumps(list2),
@@ -89,13 +93,13 @@ async def create_payload(
     return payload.id, False
 
 
-async def get_payload(db: AsyncSession, payload_id: uuid.UUID) -> Payload | None:
+async def get_payload(db: AsyncSession, payload_id: str) -> Payload | None:
     """
     Retrieve a payload by its ID.
     
     Args:
         db: Database session
-        payload_id: UUID of the payload to retrieve
+        payload_id: SHA-256 hash string (64 chars) of the payload to retrieve
         
     Returns:
         Payload object if found, None otherwise

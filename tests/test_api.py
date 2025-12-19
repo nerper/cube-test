@@ -1,7 +1,5 @@
 """Integration tests for the API endpoints."""
 
-import uuid
-
 import pytest
 from httpx import AsyncClient
 
@@ -31,8 +29,9 @@ async def test_create_payload_success(client: AsyncClient):
     assert "id" in data
     assert data["cached"] is False
 
-    # Verify it's a valid UUID
-    uuid.UUID(data["id"])
+    # Verify it's a valid SHA-256 hash (64 hex characters)
+    assert len(data["id"]) == 64
+    assert all(c in "0123456789abcdef" for c in data["id"])
 
 
 @pytest.mark.asyncio
@@ -73,7 +72,7 @@ async def test_create_payload_deduplication(client: AsyncClient):
 
     # Second request with same data
     response2 = await client.post("/payload", json=payload)
-    assert response2.status_code == 201
+    assert response2.status_code == 200
     data2 = response2.json()
     assert data2["cached"] is True
 
@@ -147,7 +146,8 @@ async def test_get_payload_success(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_get_payload_not_found(client: AsyncClient):
     """Test 404 response for non-existent payload."""
-    fake_id = str(uuid.uuid4())
+    # Use a valid SHA-256 format string (64 hex chars) that doesn't exist
+    fake_id = "a" * 64
     response = await client.get(f"/payload/{fake_id}")
 
     assert response.status_code == 404
@@ -155,11 +155,13 @@ async def test_get_payload_not_found(client: AsyncClient):
 
 
 @pytest.mark.asyncio
-async def test_get_payload_invalid_uuid(client: AsyncClient):
-    """Test 422 response for invalid UUID format."""
-    response = await client.get("/payload/not-a-uuid")
+async def test_get_payload_invalid_format(client: AsyncClient):
+    """Test that invalid hash format still works (no validation, just 404 if not found)."""
+    # Since we're using string IDs, FastAPI won't validate format
+    # But a non-existent ID will return 404
+    response = await client.get("/payload/not-a-valid-hash")
 
-    assert response.status_code == 422
+    assert response.status_code == 404
 
 
 @pytest.mark.asyncio

@@ -43,14 +43,14 @@ class Payload(Base):
     """
     Stores generated payloads with their identifiers.
     
-    Uses input_hash for deduplication - if the same inputs are provided again,
-    we return the existing payload ID instead of creating a duplicate.
+    Uses deterministic SHA-256 hash of inputs as the ID, ensuring identical
+    inputs always produce the same payload ID for true idempotency.
     """
 
     __tablename__ = "payloads"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    id: Mapped[str] = mapped_column(
+        String(64), primary_key=True
     )
     # SHA256 hash of canonical JSON representation of inputs for deduplication
     input_hash: Mapped[str] = mapped_column(
